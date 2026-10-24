@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BeatShare</title>
+    <link rel="icon" type="image/svg+xml" href="/app-icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body, #root { height: 100%; }
+      body { overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
+      input, textarea, [contenteditable], .lo-selectable {
+        user-select: text; -webkit-user-select: text;
+      }
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-thumb { background: rgba(128,140,130,0.35); border-radius: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      input, select, button, textarea { font-family: inherit; }
+
+      @keyframes lo-fade { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes lo-pop {
+        from { opacity: 0; transform: translateY(8px) scale(0.97); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @keyframes lo-pop-tl {
+        from { opacity: 0; transform: scale(0.94); }
+        to   { opacity: 1; transform: scale(1); }
+      }
+      @keyframes lo-slide-right {
+        from { transform: translateX(100%); }
+        to   { transform: translateX(0); }
+      }
+      @keyframes lo-fade-out { from { opacity: 1; } to { opacity: 0; } }
+      @keyframes lo-pop-out {
+        from { opacity: 1; transform: translateY(0) scale(1); }
+        to   { opacity: 0; transform: translateY(5px) scale(0.975); }
+      }
+      @keyframes lo-slide-out-right {
+        from { transform: translateX(0); }
+        to   { transform: translateX(100%); }
+      }
+
+      .lo-leaving > * { animation: lo-fade-out 0.2s ease both !important; }
+      .lo-leaving > * > * { animation: lo-pop-out 0.2s ease both !important; }
+      .lo-leaving > .lo-panel > * { animation: lo-slide-out-right 0.24s cubic-bezier(0.32, 0.72, 0, 1) both !important; }
+
+      @keyframes lo-page {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+
+      /* each top-level block of a page rises in just after the one above it.
+         `backwards` fill matters: it hides elements during their delay but
+         leaves no transform behind afterwards, which would otherwise trap
+         position:fixed popups inside the page. */
+      @keyframes lo-rise {
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: none; }
+      }
+
+      .lo-page-enter > * > * {
+        animation: lo-rise 0.44s cubic-bezier(0.22, 0.85, 0.3, 1) backwards;
+      }
+      .lo-page-enter > * > *:nth-child(1) { animation-delay: 0.03s; }
+      .lo-page-enter > * > *:nth-child(2) { animation-delay: 0.08s; }
+      .lo-page-enter > * > *:nth-child(3) { animation-delay: 0.13s; }
+      .lo-page-enter > * > *:nth-child(4) { animation-delay: 0.18s; }
+      .lo-page-enter > * > *:nth-child(5) { animation-delay: 0.23s; }
+      .lo-page-enter > * > *:nth-child(6) { animation-delay: 0.28s; }
+      .lo-page-enter > * > *:nth-child(n + 7) { animation-delay: 0.32s; }
+      .lo-page-enter > * > .lo-portal-host { animation: none; }
+
+      /* cards inside a two-column page section come in on their own beat */
+      .lo-page-enter > * > * > section > *,
+      .lo-page-enter > * > * > div > .lo-card {
+        animation: lo-rise 0.44s cubic-bezier(0.22, 0.85, 0.3, 1) backwards;
+        animation-delay: 0.16s;
+      }
+
+      body.no-anim *, body.no-anim *::before, body.no-anim *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+
+      .lo-add {
+        position: relative;
+        overflow: hidden;
+        transition: transform 0.18s cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 0.18s ease, filter 0.18s ease;
+      }
+      .lo-add:hover { transform: translateY(-2px) scale(1.035); box-shadow: 0 8px 20px rgba(0,0,0,0.3); filter: brightness(1.07); }
+      .lo-add:active { transform: translateY(0) scale(0.95); box-shadow: 0 2px 6px rgba(0,0,0,0.25); transition-duration: 0.07s; }
+      .lo-add .lo-plus {
+        display: inline-block;
+        font-size: 1.15em;
+        line-height: 1;
+        transition: transform 0.32s cubic-bezier(0.34, 1.4, 0.64, 1);
+      }
+      .lo-add:hover .lo-plus { transform: rotate(90deg) scale(1.15); }
+      .lo-add::after {
+        content: "";
+        position: absolute;
+        top: 0; bottom: 0; left: -60%;
+        width: 45%;
+        background: linear-gradient(100deg, transparent, rgba(255,255,255,0.28), transparent);
+        transform: skewX(-18deg);
+        opacity: 0;
+      }
+      .lo-add:hover::after { animation: lo-shine 0.7s ease forwards; }
+      @keyframes lo-shine {
+        from { left: -60%; opacity: 1; }
+        to   { left: 130%; opacity: 0; }
+      }
+
+      @keyframes lo-toast-in {
+        from { opacity: 0; transform: translateX(40px) scale(0.96); }
+        to   { opacity: 1; transform: translateX(0) scale(1); }
+      }
+      @keyframes lo-inbox-in {
+        from { opacity: 0; transform: translateX(24px); }
+        to   { opacity: 1; transform: none; }
+      }
+      @keyframes lo-toast-out {
+        from { opacity: 1; transform: translateX(0) scale(1); }
+        to   { opacity: 0; transform: translateX(28px) scale(0.96); }
+      }
+      @keyframes lo-toast-up {
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes lo-toast-fade {
+        from { opacity: 1; transform: translateY(0); }
+        to   { opacity: 0; transform: translateY(8px); }
+      }
+      @keyframes lo-celebrate {
+        from { opacity: 0; transform: scale(0.82); }
+        to   { opacity: 1; transform: scale(1); }
+      }
+      @keyframes lo-pulse {
+        0%, 100% { transform: scale(1); }
+        50%      { transform: scale(1.06); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.001ms !important;
+          transition-duration: 0.001ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
