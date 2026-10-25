@@ -291,10 +291,39 @@ drop policy if exists "members upload own images" on storage.objects;
 create policy "members upload own images" on storage.objects
   for insert to authenticated
   with check (bucket_id in ('avatars', 'covers') and (storage.foldername(name))[1] = (select auth.uid())::text);
+-- admins can also remove other members' images (Settings → Unused Images)
 drop policy if exists "members delete own images" on storage.objects;
 create policy "members delete own images" on storage.objects
   for delete to authenticated
-  using (bucket_id in ('avatars', 'covers') and (storage.foldername(name))[1] = (select auth.uid())::text);
+  using (bucket_id in ('avatars', 'covers') and ((storage.foldername(name))[1] = (select auth.uid())::text or (select private.is_admin())));
+
+-- admins only: uploaded images that no release or profile uses any more.
+-- Uploads from the last 10 minutes are left out, since a save may still be finishing.
+-- (Files themselves can only be deleted through the Storage API, which the app does.)
+create or replace function public.unused_images()
+returns table (bucket text, name text, bytes bigint, created_at timestamptz)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not private.is_admin() then
+    raise exception 'only admins can list unused images';
+  end if;
+  return query
+  select o.bucket_id::text, o.name::text, coalesce((o.metadata ->> 'size')::bigint, 0), o.created_at
+  from storage.objects o
+  where o.bucket_id in ('covers', 'avatars')
+    and o.created_at < now() - interval '10 minutes'
+    and not exists (
+      select 1 from public.albums a
+      where right(split_part(a.cover_url, '?', 1), length(o.name) + length(o.bucket_id) + 2) = '/' || o.bucket_id || '/' || o.name
+    )
+    and not exists (
+      select 1 from public.profiles p
+      where right(split_part(p.avatar_url, '?', 1), length(o.name) + length(o.bucket_id) + 2) = '/' || o.bucket_id || '/' || o.name
+    )
+  order by o.created_at;
+end $$;
+revoke execute on function public.unused_images() from public, anon;
+grant execute on function public.unused_images() to authenticated;
 
 -- ───────────────────────── realtime ─────────────────────────
 -- So a friend's new review shows up without restarting the app.

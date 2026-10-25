@@ -115,6 +115,19 @@ export function createSupabaseApi(url, key) {
       return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
     },
 
+    /* admins only: uploaded images no release or profile uses any more */
+    async unusedImages() {
+      return must(await sb.rpc("unused_images"));
+    },
+    /* returns how many were actually removed */
+    async removeImages(bucket, names) {
+      let removed = 0;
+      for (let i = 0; i < names.length; i += 100) {
+        removed += must(await sb.storage.from(bucket).remove(names.slice(i, i + 100))).length;
+      }
+      return removed;
+    },
+
     async insertAlbum(row) {
       return must(await sb.from("albums").insert(row).select().single());
     },

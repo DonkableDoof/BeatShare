@@ -15,6 +15,8 @@ Supabase for accounts, profile pictures and shared data.
   next to the group score, every member's review, and a per-track breakdown.
 - **Inbox**: recommend a release to other members (right-click it, or ➤ Recommend on its
   page) with an optional note; it lands in their inbox.
+  **For You** in the inbox suggests releases you haven't heard, picked from the genres you
+  listen to most and rate highest (genres you rate poorly count against a release).
 - **Right-click a release** to recommend it, or, if you added it, to edit or delete it.
   Only whoever added a release (or an admin) can change it.
 - **Members / Profiles**: profile picture, stats, top 3 genres, everything a member has
@@ -31,7 +33,8 @@ Scores work the same as in LifeOS: stars in halves, shown out of 10.
 npm install
 npm run app        # desktop app in dev mode (Tauri)
 npm run dev        # just the web UI at http://localhost:1430
-npm run dist       # build the Windows installer into src-tauri/target/release/bundle
+npm run dist       # build the signed Windows installer into src-tauri/target/release/bundle/nsis
+npm run release -- 0.2.0 "What's new"   # bump the version and build a release to publish (below)
 ```
 
 Without Supabase keys, BeatShare runs in **demo mode**: accounts and reviews are kept
@@ -60,6 +63,20 @@ on this computer only, which is handy for trying it out but isn't shared with an
 The anon key is designed to ship inside apps: what each person can do is enforced by the
 row-level security rules in `schema.sql`. Members can only edit their own profile and
 reviews. Only the person who added a release, or an admin, can edit or delete it.
+
+## Releasing updates
+
+Installed copies of BeatShare check this repo's GitHub releases when they start (and every
+few hours), offer the update, and install it in place. Updates must be signed with the key
+in `~/.tauri/beatshare.key` (made once with `npx tauri signer generate`). **Back that file
+up**: if it's lost, installed copies can't verify updates any more, and everyone has to
+reinstall by hand once.
+
+1. `npm run release -- 0.2.0 "What's new"` bumps the version, builds the signed installer and
+   writes `latest.json` next to it.
+2. Create a GitHub release tagged `v0.2.0`, attach `BeatShare_0.2.0_x64-setup.exe` and
+   `latest.json` from `src-tauri/target/release/bundle/nsis/`, and publish it as the latest release.
+3. Commit and push the version bump.
 
 ## Project layout
 

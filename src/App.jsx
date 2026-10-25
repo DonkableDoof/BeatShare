@@ -14,6 +14,8 @@ import LibraryPage from "./pages/LibraryPage.jsx";
 import MembersPage from "./pages/MembersPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
+import UpdateBanner from "./components/UpdateBanner.jsx";
+import { startUpdateChecks } from "./updates";
 
 const NAV = [
   { id: "feed", label: "Feed", icon: "◉" },
@@ -39,6 +41,8 @@ export default function App() {
     api.getUser().then(setUser, () => setUser(null));
     return api.onAuthChange(setUser);
   }, []);
+
+  useEffect(() => startUpdateChecks(), []);
 
   useEffect(() => {
     document.body.classList.toggle("no-anim", settings.animations === false);
@@ -79,6 +83,7 @@ export default function App() {
             <Shell t={t} user={user} settings={settings} setSettings={setSettings} notify={notify} />
           </DataProvider>
         )}
+        <UpdateBanner t={t} />
         {toast && <Toast key={toast.id} t={t} toast={toast} onClose={() => setToast(null)} />}
       </div>
     </ThemeCtx.Provider>

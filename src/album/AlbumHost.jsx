@@ -78,9 +78,9 @@ export function AlbumHost({ onOpenProfile, notify, children }) {
     setConfirm({
       title: "Delete Release",
       confirmLabel: "Delete For Everyone",
-      message: `"${album.title}" will be removed from BeatShare for the whole group${
-        others ? `, along with ${others} other member${others === 1 ? "'s" : "s'"} review${others === 1 ? "" : "s"}` : ""
-      }. This can't be undone.`,
+      message: `"${album.title}" will be removed from BeatShare for the whole group, along with its cover, ${
+        others ? `${others} other member${others === 1 ? "'s" : "s'"} review${others === 1 ? "" : "s"}, ` : ""
+      }your review and any recommendations of it. Its genres stay. This can't be undone.`,
       action: async () => {
         const id = album.id;
         setOpen(null);

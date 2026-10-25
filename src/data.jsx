@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { GENRE_COLORS, norm } from "./music";
-import { dataUrlToBlob, isDataUrl, shrinkImage } from "./images";
+import { dataUrlToBlob, isDataUrl, shrinkImage, storagePath } from "./images";
 
 /* Everything the friend group has shared, held in memory and kept current
    by realtime. Edits apply locally first so stars and notes never wait on
@@ -160,9 +160,15 @@ export function DataProvider({ user, onError, children }) {
     }
   };
 
+  /* the database takes the release's reviews and recommendations with it;
+     its cover file is removed here (anything missed shows up under Settings → Unused Images) */
   const deleteAlbum = async (id) => {
+    const before = lookups.albumById[id];
     await api.deleteAlbum(id);
     apply("albums", { id }, true);
+    const cover = before && before.cover_url;
+    const path = storagePath("covers", cover);
+    if (path && !db.albums.some((a) => a.id !== id && a.cover_url === cover)) api.removeImages("covers", [path]).catch(() => {});
   };
 
   /* ── genres ── */

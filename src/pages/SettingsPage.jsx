@@ -6,6 +6,7 @@ import { api, isDemo } from "../api";
 import { parseLifeOSBackup, planImport, runImport } from "../lifeosImport";
 import { Switch, Avatar } from "../album/bits.jsx";
 import { nameOf, prettyDate } from "../music";
+import { inApp, useUpdates, checkForUpdates, installUpdate } from "../updates";
 
 export default function SettingsPage({ settings, setSettings, user, notify }) {
   const t = useTheme();
@@ -59,6 +60,7 @@ export default function SettingsPage({ settings, setSettings, user, notify }) {
       </section>
 
       {d.me.is_admin && <InviteCodes t={t} s={s} notify={notify} />}
+      {d.me.is_admin && <UnusedImages t={t} s={s} notify={notify} />}
 
       <LifeOSImport t={t} s={s} notify={notify} />
 
@@ -75,6 +77,8 @@ export default function SettingsPage({ settings, setSettings, user, notify }) {
           Sign Out
         </button>
       </section>
+
+      <AboutUpdates t={t} s={s} />
 
       <section style={s.card}>
         <h2 style={{ ...s.h2, marginBottom: 6 }}>Server</h2>
@@ -94,6 +98,52 @@ export default function SettingsPage({ settings, setSettings, user, notify }) {
         </div>
       </section>
     </div>
+  );
+}
+
+function AboutUpdates({ t, s }) {
+  const u = useUpdates();
+  const status = !inApp()
+    ? "Updates are installed from the desktop app."
+    : u.status === "checking"
+      ? "Checking GitHub for updates…"
+      : u.status === "current"
+        ? "✓ You're on the latest version."
+        : u.status === "available"
+          ? `BeatShare ${u.update.version} is available.`
+          : u.status === "downloading"
+            ? `Downloading ${u.update.version}… ${Math.round(u.progress * 100)}%`
+            : u.status === "restarting"
+              ? "Installing — BeatShare will restart in a moment."
+              : u.status === "error"
+                ? `Couldn't check for updates: ${u.error}`
+                : "BeatShare checks for updates when it starts, and every few hours.";
+  return (
+    <section style={s.card}>
+      <h2 style={{ ...s.h2, marginBottom: 6 }}>About & Updates</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.6 }}>
+          <strong style={{ color: t.text }}>BeatShare {u.version || "(browser preview)"}</strong>
+          <br />
+          <span style={{ color: u.status === "error" ? "#ef4444" : u.status === "current" ? t.green : t.textMuted }}>{status}</span>
+        </div>
+        <div style={{ flex: 1 }} />
+        {inApp() && u.status === "available" ? (
+          <button style={s.btnPrimary} onClick={installUpdate}>
+            Install {u.update.version} & Restart
+          </button>
+        ) : (
+          inApp() && (
+            <button
+              style={{ ...s.btnGhost, opacity: u.status === "checking" || u.status === "downloading" ? 0.5 : 1 }}
+              disabled={u.status === "checking" || u.status === "downloading" || u.status === "restarting"}
+              onClick={checkForUpdates}>
+              Check for Updates
+            </button>
+          )
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -186,6 +236,89 @@ function InviteCodes({ t, s, notify }) {
               </div>
             );
           })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* admin only: covers and profile pictures left behind by deleted or replaced
+   releases and pictures, which still take up the project's storage */
+function UnusedImages({ t, s, notify }) {
+  const d = useData();
+  const [list, setList] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const load = () =>
+    api.unusedImages().then(
+      (rows) => setList(rows || []),
+      (e) => {
+        setList([]);
+        notify(d.friendly(e), "error");
+      }
+    );
+  useEffect(() => {
+    load();
+  }, []);
+
+  const remove = async () => {
+    setBusy(true);
+    setConfirming(false);
+    let removed = 0;
+    try {
+      for (const bucket of ["covers", "avatars"]) {
+        const names = list.filter((x) => x.bucket === bucket).map((x) => x.name);
+        if (names.length) removed += await api.removeImages(bucket, names);
+      }
+      notify(`Deleted ${removed} unused image${removed === 1 ? "" : "s"}.`);
+    } catch (e) {
+      notify(d.friendly(e), "error");
+    }
+    await load();
+    setBusy(false);
+  };
+
+  const n = list ? list.length : 0;
+  const kb = list ? Math.round(list.reduce((sum, x) => sum + Number(x.bytes || 0), 0) / 1024) : 0;
+  const covers = list ? list.filter((x) => x.bucket === "covers").length : 0;
+
+  return (
+    <section style={s.card}>
+      <h2 style={{ ...s.h2, marginBottom: 6 }}>Unused Images</h2>
+      <p style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.6, marginBottom: 14 }}>
+        Covers and profile pictures that no release or member uses any more (from deleted releases, replaced pictures or
+        imports that didn't finish). They still take up the project's storage.
+      </p>
+      {list === null ? (
+        <div style={s.empty}>Checking…</div>
+      ) : n === 0 ? (
+        <div style={{ fontSize: 13, color: t.green, fontWeight: 600 }}>✓ Nothing to clean up.</div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 13, color: t.text }}>
+            <strong>{n}</strong> unused image{n === 1 ? "" : "s"} ({covers} cover{covers === 1 ? "" : "s"}, {n - covers} profile
+            picture{n - covers === 1 ? "" : "s"}) · {kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`}
+          </div>
+          <div style={{ flex: 1 }} />
+          {confirming ? (
+            <>
+              <span style={{ fontSize: 12.5, color: t.textMuted }}>This can't be undone.</span>
+              <button style={s.btnGhost} onClick={() => setConfirming(false)}>
+                Cancel
+              </button>
+              <button style={{ ...s.btnPrimary, background: "#dc2626" }} onClick={remove}>
+                Delete {n} Image{n === 1 ? "" : "s"}
+              </button>
+            </>
+          ) : (
+            <button
+              style={{ ...s.btnGhost, color: "#ef4444", borderColor: hexToRgba("#ef4444", 0.5), opacity: busy ? 0.6 : 1 }}
+              disabled={busy}
+              onClick={() => setConfirming(true)}>
+              {busy ? "Deleting…" : "Delete Unused Images"}
+            </button>
+          )}
         </div>
       )}
     </section>

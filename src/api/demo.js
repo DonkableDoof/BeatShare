@@ -171,6 +171,14 @@ export function createDemoApi() {
       return blobToDataUrl(blob);
     },
 
+    /* demo images live inside the data itself, so there's never anything left over */
+    async unusedImages() {
+      return [];
+    },
+    async removeImages() {
+      return 0;
+    },
+
     async insertAlbum(row) {
       const db = read();
       if (releaseTaken(db, row)) throw new Error('duplicate key value violates unique constraint "albums_release_key"');

@@ -55,3 +55,9 @@ export async function dataUrlToBlob(dataUrl) {
 }
 
 export const isDataUrl = (s) => typeof s === "string" && s.startsWith("data:");
+
+/* ".../storage/v1/object/public/covers/<user>/<file>.jpg" → "<user>/<file>.jpg"; "" for anything not in that bucket */
+export function storagePath(bucket, url) {
+  const m = String(url || "").split("?")[0].match(new RegExp(`/storage/v1/object/public/${bucket}/(.+)$`));
+  return m ? decodeURIComponent(m[1]) : "";
+}
