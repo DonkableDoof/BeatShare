@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "BeatShare (Tauri dev)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run tauri dev",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "BeatShare (release build)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run tauri build -- --no-bundle; ./src-tauri/target/release/beatshare.exe",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

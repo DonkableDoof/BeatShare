@@ -44,6 +44,21 @@ export function trackAvg(a, review) {
   return rated.reduce((n, tr) => n + trackRating(review, tr.id), 0) / rated.length;
 }
 
+/* what each score out of 10 means, shown while hovering the stars */
+export const RATING_WORDS = [
+  "Actual Dogshit",
+  "Pretty Bad",
+  "It's Alright",
+  "Pretty Good",
+  "Good",
+  "Hecka Good",
+  "Great",
+  "Amazing",
+  "Transcendent",
+  "Life-Changing",
+];
+export const ratingWord = (stars) => RATING_WORDS[Math.round(stars * 2) - 1] || "";
+
 export const reviewScore = (a, review) => (!review ? 0 : review.rating > 0 ? Number(review.rating) : trackAvg(a, review));
 
 /* a review counts once it carries any verdict at all */

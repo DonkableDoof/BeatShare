@@ -11,7 +11,6 @@ const PAGE = 40;
 
 const WHO = [
   { id: "all", label: "Everyone" },
-  { id: "friends", label: "Friends" },
   { id: "me", label: "Just Me" },
 ];
 
@@ -20,7 +19,8 @@ export default function FeedPage({ onOpenProfile }) {
   const s = ui(t);
   const d = useData();
   const host = useAlbums();
-  const [who, setWho] = usePersistentStorage("bs-feed-who", "all");
+  const [savedWho, setWho] = usePersistentStorage("bs-feed-who", "all");
+  const who = savedWho === "me" ? "me" : "all";
   const [limit, setLimit] = useState(PAGE);
 
   /* every review with something in it, plus every release being added */
@@ -36,7 +36,7 @@ export default function FeedPage({ onOpenProfile }) {
     return list.sort((x, y) => String(y.at).localeCompare(String(x.at)));
   }, [d.reviews, d.albums, d.albumById]);
 
-  const shown = events.filter((e) => (who === "me" ? e.user === d.userId : who === "friends" ? e.user !== d.userId : true));
+  const shown = events.filter((e) => who !== "me" || e.user === d.userId);
 
   const side = useMemo(() => {
     const all = d.albums.map((a) => ({ a, g: groupScore(a, d.reviewsByAlbum[a.id] || []) }));
@@ -44,7 +44,7 @@ export default function FeedPage({ onOpenProfile }) {
       .filter((x) => x.g.count > 0)
       .sort((x, y) => Math.min(y.g.count, 2) - Math.min(x.g.count, 2) || y.g.avg - x.g.avg)
       .slice(0, 5);
-    /* what friends have been rating that you haven't, then anything brand new */
+    /* what others have been rating that you haven't, then anything brand new */
     const waiting = all
       .filter((x) => !d.myReviews[x.a.id])
       .sort((x, y) => y.g.count - x.g.count || y.g.avg - x.g.avg || String(y.a.created_at).localeCompare(String(x.a.created_at)))
@@ -84,9 +84,7 @@ export default function FeedPage({ onOpenProfile }) {
               <div style={{ fontSize: 38, marginBottom: 10 }}>🎧</div>
               <h2 style={{ ...s.h2, marginBottom: 6 }}>Nothing here yet</h2>
               <p style={{ fontSize: 13.5, color: t.textMuted, lineHeight: 1.6, maxWidth: 420, margin: "0 auto 18px" }}>
-                {who === "friends"
-                  ? "When your friends rate or add releases, they'll show up here."
-                  : "Add a release or rate one from the Library and it'll show up here for everyone."}
+                Add a release or rate one from the Library and it'll show up here for everyone.
               </p>
             </div>
           ) : (

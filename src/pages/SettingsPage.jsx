@@ -1,10 +1,11 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useTheme, hexToRgba, COLOR_SCHEMES } from "../theme";
 import { ui } from "../ui";
 import { useData } from "../data.jsx";
 import { api, isDemo } from "../api";
 import { parseLifeOSBackup, planImport, runImport } from "../lifeosImport";
-import { Switch } from "../album/bits.jsx";
+import { Switch, Avatar } from "../album/bits.jsx";
+import { nameOf, prettyDate } from "../music";
 
 export default function SettingsPage({ settings, setSettings, user, notify }) {
   const t = useTheme();
@@ -57,6 +58,8 @@ export default function SettingsPage({ settings, setSettings, user, notify }) {
         </div>
       </section>
 
+      {d.me.is_admin && <InviteCodes t={t} s={s} notify={notify} />}
+
       <LifeOSImport t={t} s={s} notify={notify} />
 
       <section style={s.card}>
@@ -91,6 +94,101 @@ export default function SettingsPage({ settings, setSettings, user, notify }) {
         </div>
       </section>
     </div>
+  );
+}
+
+/* only the admin sees this: BeatShare is invite-only, and each code lets one person in */
+function InviteCodes({ t, s, notify }) {
+  const d = useData();
+  const [invites, setInvites] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.listInvites().then(setInvites, (e) => notify(d.friendly(e), "error"));
+  useEffect(() => {
+    load();
+  }, []);
+
+  const create = async () => {
+    setBusy(true);
+    try {
+      const inv = await api.createInvite(d.userId);
+      setInvites((list) => [inv, ...(list || [])]);
+      copy(inv.code);
+    } catch (e) {
+      notify(d.friendly(e), "error");
+    }
+    setBusy(false);
+  };
+
+  const copy = (code) =>
+    navigator.clipboard.writeText(code).then(
+      () => notify(`Copied ${code} — send it to the person you're inviting.`),
+      () => notify(code)
+    );
+
+  const remove = async (code) => {
+    try {
+      await api.deleteInvite(code);
+      setInvites((list) => list.filter((i) => i.code !== code));
+    } catch (e) {
+      notify(d.friendly(e), "error");
+    }
+  };
+
+  const unused = (invites || []).filter((i) => !i.used_by);
+  const used = (invites || []).filter((i) => i.used_by);
+  const mono = { fontFamily: "ui-monospace, Consolas, monospace", fontSize: 13.5, fontWeight: 700, letterSpacing: 1 };
+
+  return (
+    <section style={s.card}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <h2 style={{ ...s.h2, marginBottom: 6 }}>Invite Codes</h2>
+          <div style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.6 }}>
+            Nobody can create an account without a code, and each code works once. Only you, as the admin, can make them.
+          </div>
+        </div>
+        <button style={{ ...s.btnPrimary, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={create}>
+          + New Invite Code
+        </button>
+      </div>
+
+      {invites === null ? (
+        <div style={s.empty}>Loading…</div>
+      ) : !invites.length ? (
+        <div style={s.empty}>No codes yet. Make one for each friend you want to invite.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {unused.map((i) => (
+            <div key={i.code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 9, border: `1px solid ${t.border}`, background: t.bgCard2 }}>
+              <span className="lo-selectable" style={{ ...mono, color: t.text }}>{i.code}</span>
+              <span style={{ fontSize: 12, color: t.green, fontWeight: 600 }}>Unused</span>
+              <span style={{ fontSize: 12, color: t.textDim }}>made {prettyDate(i.created_at)}</span>
+              <div style={{ flex: 1 }} />
+              <button style={{ ...s.btnGhost, padding: "4px 10px", fontSize: 12 }} onClick={() => copy(i.code)}>
+                Copy
+              </button>
+              <button title="Delete this code so it can't be used" style={{ ...s.iconBtn, color: "#ef4444" }} onClick={() => remove(i.code)}>
+                ✕
+              </button>
+            </div>
+          ))}
+          {used.map((i) => {
+            const p = d.profileById[i.used_by];
+            return (
+              <div key={i.code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 9, border: `1px solid ${t.border}`, opacity: 0.75 }}>
+                <span style={{ ...mono, color: t.textDim, textDecoration: "line-through" }}>{i.code}</span>
+                <span style={{ fontSize: 12, color: t.textMuted, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  used by {p && <Avatar t={t} profile={p} size={18} />}
+                  <strong style={{ color: t.text }}>{p ? nameOf(p) : "a deleted account"}</strong>
+                  {i.used_at ? ` · ${prettyDate(i.used_at)}` : ""}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 

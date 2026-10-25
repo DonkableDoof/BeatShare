@@ -6,9 +6,9 @@ import { useData } from "../data.jsx";
 import { useAlbums } from "../album/AlbumHost.jsx";
 import { genresOf, groupScore, reviewScore, hasVerdict, points } from "../music";
 import Cover from "../album/Cover.jsx";
-import GenreMap from "../album/GenreMap.jsx";
 import { GenreFilter } from "../album/Genres.jsx";
 import { Switch } from "../album/bits.jsx";
+import Select from "../components/Select.jsx";
 
 const SORTS = [
   { id: "active", label: "Recently Active" },
@@ -28,7 +28,6 @@ export default function LibraryPage() {
   const d = useData();
   const host = useAlbums();
   const [sort, setSort] = usePersistentStorage("bs-library-sort", "active");
-  const [view, setView] = usePersistentStorage("bs-library-view", "gallery");
   const [showGenres, setShowGenres] = usePersistentStorage("bs-show-genres", true);
   const [query, setQuery] = useState("");
   const [genreFilter, setGenreFilter] = useState([]);
@@ -121,17 +120,7 @@ export default function LibraryPage() {
             {myAvg > 0 ? ` · your average ${points(myAvg)}/10` : ""}
           </div>
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-          {[
-            ["gallery", "▦ Gallery"],
-            ["map", "✦ Genre Map"],
-          ].map(([id, label]) => (
-            <button key={id} style={{ ...s.segment(view === id), padding: "7px 12px" }} onClick={() => setView(id)}>
-              {label}
-            </button>
-          ))}
-        </div>
-        {view !== "map" && (
+        <div style={{ marginLeft: "auto" }}>
           <Switch
             t={t}
             label="Show Genres"
@@ -139,7 +128,7 @@ export default function LibraryPage() {
             value={showGenres !== false}
             onChange={() => setShowGenres((v) => v === false)}
           />
-        )}
+        </div>
         <button className="lo-add" style={s.btnPrimary} onClick={host.newAlbum}>
           <span className="lo-plus">+</span> Add Release
         </button>
@@ -172,19 +161,7 @@ export default function LibraryPage() {
             ✦ Not Rated By Me
             <span style={{ fontSize: 11, fontWeight: 700, opacity: 0.8 }}>{newCount}</span>
           </button>
-          {view !== "map" && (
-            <select
-              style={{ ...s.input, width: "auto", cursor: "pointer", padding: "7px 10px", fontSize: 13, fontWeight: 600 }}
-              value={sort}
-              title="Sort by"
-              onChange={(e) => setSort(e.target.value)}>
-              {SORTS.map((o) => (
-                <option key={o.id} value={o.id}>
-                  Sort: {o.label}
-                </option>
-              ))}
-            </select>
-          )}
+          <Select t={t} s={s} variant="segment" title="Sort by" prefix="Sort: " value={sort} options={SORTS} onChange={setSort} menuWidth={190} />
         </div>
       </section>
 
@@ -208,16 +185,6 @@ export default function LibraryPage() {
             </button>
           )}
         </section>
-      ) : view === "map" ? (
-        <GenreMap
-          t={t}
-          s={s}
-          albums={shown}
-          genreById={d.genreById}
-          scoreOf={(a) => (info[a.id] ? info[a.id].group.avg : 0)}
-          onOpen={(a) => host.openAlbum(a.id)}
-          onManage={host.manageGenres}
-        />
       ) : (
         <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))", gap: 18, paddingBottom: 8 }}>
           {shown.map((a) => (
@@ -229,9 +196,8 @@ export default function LibraryPage() {
               group={info[a.id].group}
               myReview={info[a.id].mine}
               myScore={info[a.id].myScore}
-              reviewers={info[a.id].reviewers}
-              profileById={d.profileById}
               onOpen={() => host.openAlbum(a.id)}
+              onContextMenu={(e) => host.albumMenu(e, a)}
             />
           ))}
         </section>

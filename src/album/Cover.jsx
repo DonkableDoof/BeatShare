@@ -1,17 +1,17 @@
 import React from "react";
 import { releaseType, unratedTracks, scoreColor, points } from "../music";
-import { Art, Avatar, GenreChip, ScorePill, oneLine } from "./bits.jsx";
+import { Art, GenreChip, ScorePill, oneLine } from "./bits.jsx";
 
 /* A release in the gallery. The corner pill is the group's score; the
    bottom strip carries yours. `label` swaps the group score for someone
    else's (on a profile, it's that member's score). */
-export default function Cover({ t, album, genres, group, myReview, myScore, reviewers = [], profileById, label, onOpen }) {
+export default function Cover({ t, album, genres, group, myReview, myScore, label, onOpen, onContextMenu }) {
   const tracks = (album.tracks || []).length;
   const toRate = myReview ? unratedTracks(album, myReview).length : 0;
-  const shownReviewers = reviewers.slice(0, 5);
   return (
     <button
       onClick={onOpen}
+      onContextMenu={onContextMenu}
       title={`${album.title}${album.artist ? ` — ${album.artist}` : ""}`}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "translateY(-4px)";
@@ -118,20 +118,6 @@ export default function Cover({ t, album, genres, group, myReview, myScore, revi
           {album.artist || "Unknown artist"}
           {album.year ? ` · ${album.year}` : ""}
         </div>
-        {shownReviewers.length > 0 && profileById && (
-          <div style={{ display: "flex", alignItems: "center", marginTop: 6 }}>
-            {shownReviewers.map((id, i) => (
-              <span key={id} style={{ marginLeft: i ? -5 : 0, display: "inline-flex", borderRadius: "50%", boxShadow: `0 0 0 2px ${t.bg}` }}>
-                <Avatar t={t} profile={profileById[id]} size={18} />
-              </span>
-            ))}
-            {reviewers.length > shownReviewers.length && (
-              <span style={{ fontSize: 11, color: t.textDim, marginLeft: 5, fontWeight: 600 }}>
-                +{reviewers.length - shownReviewers.length}
-              </span>
-            )}
-          </div>
-        )}
         {genres.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6, maxHeight: 20, overflow: "hidden" }}>
             {genres.map((g) => (

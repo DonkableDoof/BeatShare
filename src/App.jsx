@@ -9,6 +9,7 @@ import { Avatar } from "./album/bits.jsx";
 import { nameOf } from "./music";
 import AuthPage from "./pages/AuthPage.jsx";
 import FeedPage from "./pages/FeedPage.jsx";
+import InboxPage from "./pages/InboxPage.jsx";
 import LibraryPage from "./pages/LibraryPage.jsx";
 import MembersPage from "./pages/MembersPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
@@ -17,6 +18,7 @@ import SettingsPage from "./pages/SettingsPage.jsx";
 const NAV = [
   { id: "feed", label: "Feed", icon: "◉" },
   { id: "library", label: "Library", icon: "▦" },
+  { id: "inbox", label: "Inbox", icon: "✉" },
   { id: "members", label: "Members", icon: "☺" },
 ];
 
@@ -41,6 +43,18 @@ export default function App() {
   useEffect(() => {
     document.body.classList.toggle("no-anim", settings.animations === false);
   }, [settings.animations]);
+
+  /* no browser right-click menu anywhere (releases bring their own);
+     text fields keep theirs for copy and paste */
+  useEffect(() => {
+    const onMenu = (e) => {
+      const el = e.target;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      e.preventDefault();
+    };
+    window.addEventListener("contextmenu", onMenu);
+    return () => window.removeEventListener("contextmenu", onMenu);
+  }, []);
 
   useEffect(() => {
     document.body.style.background = t.bg;
@@ -161,6 +175,11 @@ function Shell({ t, user, settings, setSettings, notify }) {
   );
 
   const unrated = d.albums.filter((a) => !d.myReviews[a.id]).length;
+  const badge = (n, title) => (
+    <span title={title} style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 999, background: t.accentBg, color: t.accent }}>
+      {n}
+    </span>
+  );
 
   return (
     <AlbumHost onOpenProfile={openProfile} notify={notify}>
@@ -176,13 +195,11 @@ function Shell({ t, user, settings, setSettings, notify }) {
                 { ...n, icon: <span style={{ fontSize: 16, width: 20, textAlign: "center" }}>{n.icon}</span> },
                 page.id === n.id || (n.id === "members" && page.id === "profile" && !isMine),
                 () => go({ id: n.id }),
-                n.id === "library" && unrated > 0 ? (
-                  <span
-                    title={`${unrated} release${unrated === 1 ? "" : "s"} you haven't rated`}
-                    style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "1px 7px", borderRadius: 999, background: t.accentBg, color: t.accent }}>
-                    {unrated}
-                  </span>
-                ) : null
+                n.id === "library" && unrated > 0
+                  ? badge(unrated, `${unrated} release${unrated === 1 ? "" : "s"} you haven't rated`)
+                  : n.id === "inbox" && d.unread > 0
+                    ? badge(d.unread, `${d.unread} new recommendation${d.unread === 1 ? "" : "s"}`)
+                    : null
               )
             )}
           </nav>
@@ -217,6 +234,8 @@ function Shell({ t, user, settings, setSettings, notify }) {
               <FeedPage onOpenProfile={openProfile} />
             ) : page.id === "library" ? (
               <LibraryPage />
+            ) : page.id === "inbox" ? (
+              <InboxPage onOpenProfile={openProfile} />
             ) : page.id === "members" ? (
               <MembersPage onOpenProfile={openProfile} />
             ) : page.id === "profile" ? (

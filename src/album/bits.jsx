@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { hexToRgba } from "../theme";
-import { scoreColor, points, nameOf } from "../music";
+import { scoreColor, points, nameOf, ratingWord } from "../music";
 
 /* one line, cut with … — keeps every card in the grid the same height */
 export const oneLine = {
@@ -84,6 +85,9 @@ export function Avatar({ t, profile, size = 32, ring }) {
 
 export function Stars({ value = 0, size = 18, onChange, t, gap = 2 }) {
   const [hover, setHover] = useState(0);
+  /* where the hovered star sits on screen — the label is drawn at the top
+     of the page, so a popup's edges can't clip it */
+  const [anchor, setAnchor] = useState(null);
   const interactive = !!onChange;
   const shown = hover || value;
 
@@ -95,6 +99,32 @@ export function Stars({ value = 0, size = 18, onChange, t, gap = 2 }) {
 
   return (
     <span style={{ display: "inline-flex", gap, alignItems: "center" }} onMouseLeave={() => interactive && setHover(0)}>
+      {interactive && hover > 0 && anchor && createPortal(
+        <span
+          style={{
+            position: "fixed",
+            left: anchor.x,
+            top: anchor.y - 6,
+            transform: "translate(-50%, -100%)",
+            zIndex: 900,
+            pointerEvents: "none",
+            fontFamily: anchor.font,
+            whiteSpace: "nowrap",
+            padding: "3px 9px",
+            borderRadius: 7,
+            fontSize: 11.5,
+            fontWeight: 700,
+            lineHeight: 1.4,
+            color: "#fff",
+            background: "rgba(12,12,18,0.92)",
+            border: `1px solid ${scoreColor(hover)}`,
+            boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+            animation: "lo-fade 0.12s ease both",
+          }}>
+          {ratingWord(hover)} <span style={{ color: scoreColor(hover), marginLeft: 3 }}>{points(hover)}</span>
+        </span>,
+        document.body
+      )}
       {[1, 2, 3, 4, 5].map((n) => {
         const fill = Math.max(0, Math.min(1, shown - (n - 1)));
         const star = (
@@ -126,8 +156,11 @@ export function Stars({ value = 0, size = 18, onChange, t, gap = 2 }) {
         return (
           <button
             key={n}
-            title={`${n * 2 - 1} or ${n * 2} out of 10`}
-            onMouseMove={(e) => setHover(at(e, n))}
+            onMouseMove={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setHover(at(e, n));
+              setAnchor({ x: r.left + r.width / 2, y: r.top, font: getComputedStyle(e.currentTarget).fontFamily });
+            }}
             onClick={(e) => {
               const v = at(e, n);
               onChange(v === value ? 0 : v);

@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
 import { GENRE_COLORS, norm } from "./music";
-import { dataUrlToBlob, isDataUrl } from "./images";
+import { dataUrlToBlob, isDataUrl, shrinkImage } from "./images";
 
 /* Everything the friend group has shared, held in memory and kept current
    by realtime. Edits apply locally first so stars and notes never wait on
@@ -15,6 +15,7 @@ const keyOf = {
   genres: (r) => r.id,
   albums: (r) => r.id,
   reviews: (r) => `${r.album_id}|${r.user_id}`,
+  recommendations: (r) => r.id,
 };
 
 const REVIEW_DELAY = 500;
@@ -24,12 +25,13 @@ const friendly = (e) => {
   if (msg.includes("albums_release_key")) return "That release is already on BeatShare.";
   if (msg.includes("genres_name_key")) return "A genre with that name already exists.";
   if (msg.includes("profiles_username_key")) return "That username is taken.";
+  if (msg.includes("recommendations_album_id_from_user_to_user_key")) return "You've already recommended that release to them.";
   if (/failed to fetch|network/i.test(msg)) return "Couldn't reach BeatShare's server — check your connection.";
   return msg;
 };
 
 export function DataProvider({ user, onError, children }) {
-  const [db, setDb] = useState({ profiles: [], genres: [], albums: [], reviews: [] });
+  const [db, setDb] = useState({ profiles: [], genres: [], albums: [], reviews: [], recommendations: [] });
   const [status, setStatus] = useState("loading");
   const dbRef = useRef(db);
   dbRef.current = db;
@@ -61,7 +63,10 @@ export function DataProvider({ user, onError, children }) {
       const rest = d[table].filter((x) => keyOf[table](x) !== k);
       const next = { ...d, [table]: removed ? rest : [...rest, row] };
       /* a removed release takes its reviews with it */
-      if (table === "albums" && removed) next.reviews = d.reviews.filter((r) => r.album_id !== row.id);
+      if (table === "albums" && removed) {
+        next.reviews = d.reviews.filter((r) => r.album_id !== row.id);
+        next.recommendations = d.recommendations.filter((r) => r.album_id !== row.id);
+      }
       return next;
     });
   }, []);
@@ -108,11 +113,20 @@ export function DataProvider({ user, onError, children }) {
     const reviewsByAlbum = {};
     db.reviews.forEach((r) => (reviewsByAlbum[r.album_id] = reviewsByAlbum[r.album_id] || []).push(r));
     const myReviews = Object.fromEntries(db.reviews.filter((r) => r.user_id === user.id).map((r) => [r.album_id, r]));
-    return { profileById, genreById, albumById, reviewsByAlbum, myReviews };
+    /* recommendations whose release still exists, newest first */
+    const recs = db.recommendations
+      .filter((r) => albumById[r.album_id])
+      .sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)));
+    const inbox = recs.filter((r) => r.to_user === user.id);
+    const sent = recs.filter((r) => r.from_user === user.id);
+    const unread = inbox.filter((r) => !r.read_at).length;
+    return { profileById, genreById, albumById, reviewsByAlbum, myReviews, inbox, sent, unread };
   }, [db, user.id]);
 
   /* ── images ── */
-  const upload = async (bucket, src) => (isDataUrl(src) ? api.uploadImage(bucket, user.id, await dataUrlToBlob(src)) : src);
+  /* every upload is capped at 256×256, whatever it came from (the forms, a LifeOS import) */
+  const upload = async (bucket, src) =>
+    isDataUrl(src) ? api.uploadImage(bucket, user.id, await dataUrlToBlob(await shrinkImage(src, undefined, bucket === "avatars"))) : src;
 
   /* ── releases ── */
   const saveAlbum = async (album, isNew) => {
@@ -122,6 +136,7 @@ export function DataProvider({ user, onError, children }) {
       type: album.type,
       year: String(album.year || "").trim(),
       cover_url: await upload("covers", album.cover_url || ""),
+      link: album.link || "",
       genres: album.genres || [],
       tracks: (album.tracks || []).map(({ id, title, interlude }) => ({ id, title: title.trim(), interlude: !!interlude })),
     };
@@ -253,6 +268,38 @@ export function DataProvider({ user, onError, children }) {
     return saved;
   };
 
+  /* ── recommendations ── */
+  const recommend = async (albumId, toUsers, note) => {
+    const rows = toUsers.map((to) => ({ album_id: albumId, from_user: user.id, to_user: to, note: (note || "").trim().slice(0, 300) }));
+    const saved = await api.insertRecommendations(rows);
+    saved.forEach((r) => apply("recommendations", r));
+  };
+
+  const markRead = async (ids) => {
+    const todo = ids.filter((id) => db.recommendations.some((r) => r.id === id && r.to_user === user.id && !r.read_at));
+    if (!todo.length) return;
+    const at = new Date().toISOString();
+    todo.forEach((id) => apply("recommendations", { ...db.recommendations.find((r) => r.id === id), read_at: at }));
+    try {
+      await api.markRecommendationsRead(todo);
+    } catch (e) {
+      fail(e);
+      load();
+    }
+  };
+
+  const removeRecommendation = async (id) => {
+    const before = db.recommendations.find((r) => r.id === id);
+    if (!before) return;
+    apply("recommendations", before, true);
+    try {
+      await api.deleteRecommendation(id);
+    } catch (e) {
+      apply("recommendations", before);
+      fail(e);
+    }
+  };
+
   /* ── profile ── */
   const updateProfile = async (patch) => {
     const next = { ...patch };
@@ -262,10 +309,14 @@ export function DataProvider({ user, onError, children }) {
     return saved;
   };
 
+  const me = lookups.profileById[user.id] || null;
+
   const value = {
     status,
     reload: load,
-    me: lookups.profileById[user.id] || null,
+    me,
+    /* only whoever added a release, or an admin, can change it */
+    canEdit: (album) => !!album && (album.created_by === user.id || !!(me && me.is_admin)),
     userId: user.id,
     ...db,
     ...lookups,
@@ -280,6 +331,9 @@ export function DataProvider({ user, onError, children }) {
     saveReviewNow,
     flushReviews: () => Promise.all(Object.keys(pending.current).map(flushReview)),
     updateProfile,
+    recommend,
+    markRead,
+    removeRecommendation,
     friendly,
   };
 

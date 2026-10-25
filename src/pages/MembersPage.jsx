@@ -3,7 +3,7 @@ import { useTheme } from "../theme";
 import { ui } from "../ui";
 import { useData } from "../data.jsx";
 import { reviewScore, scoreColor, points, nameOf, prettyDate } from "../music";
-import { Avatar, oneLine } from "../album/bits.jsx";
+import { Avatar, GenreChip, oneLine } from "../album/bits.jsx";
 
 /* member stats used here and on profiles */
 export function memberStats(d, userId) {
@@ -16,10 +16,14 @@ export function memberStats(d, userId) {
   });
   const avg = scored.length ? scored.reduce((n, x) => n + x.v, 0) / scored.length : 0;
   const added = d.albums.filter((a) => a.created_by === userId);
+  /* the genres of everything they've scored, most listened-to first */
   const genreCount = {};
   scored.forEach(({ a }) => (a.genres || []).forEach((g) => d.genreById[g] && (genreCount[g] = (genreCount[g] || 0) + 1)));
-  const topGenre = Object.keys(genreCount).sort((x, y) => genreCount[y] - genreCount[x])[0];
-  return { scored, avg, added, topGenre: topGenre ? d.genreById[topGenre] : null };
+  const topGenres = Object.keys(genreCount)
+    .sort((x, y) => genreCount[y] - genreCount[x] || d.genreById[x].name.localeCompare(d.genreById[y].name))
+    .slice(0, 3)
+    .map((id) => ({ genre: d.genreById[id], count: genreCount[id] }));
+  return { scored, avg, added, topGenres };
 }
 
 export default function MembersPage({ onOpenProfile }) {
@@ -83,8 +87,12 @@ export default function MembersPage({ onOpenProfile }) {
                 <div style={{ fontSize: 12, color: t.textMuted }}>@{p.username}</div>
               </div>
             </div>
-            <div style={{ fontSize: 12.5, color: p.bio ? t.textMuted : t.textDim, lineHeight: 1.5, minHeight: 37, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-              {p.bio || `Joined ${prettyDate(p.created_at)}`}
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5, minHeight: 22 }}>
+              {st.topGenres.length ? (
+                st.topGenres.map(({ genre }) => <GenreChip key={genre.id} t={t} genre={genre} small />)
+              ) : (
+                <span style={{ fontSize: 12.5, color: t.textDim }}>Joined {prettyDate(p.created_at)}</span>
+              )}
             </div>
             <div style={{ display: "flex", gap: 14, fontSize: 12, color: t.textMuted }}>
               <span>

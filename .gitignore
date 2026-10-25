@@ -13,6 +13,7 @@ npm-debug.log*
 Thumbs.db
 .idea/
 .vscode/*
+!.vscode/launch.json
 
 # local env — holds your Supabase keys
 .env

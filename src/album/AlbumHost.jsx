@@ -1,10 +1,12 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { useTheme } from "../theme";
 import { ui } from "../ui";
 import { useData } from "../data.jsx";
-import { genresOf, hasVerdict, typeLabel } from "../music";
+import { genresOf, hasVerdict, typeLabel, nameOf } from "../music";
 import Popup from "../components/Popup.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
+import ContextMenu from "../components/ContextMenu.jsx";
+import RecommendDialog from "./Recommend.jsx";
 import AlbumDetail from "./AlbumDetail.jsx";
 import AlbumForm, { blankAlbum } from "./AlbumForm.jsx";
 import { GenreManager } from "./Genres.jsx";
@@ -23,6 +25,9 @@ export function AlbumHost({ onOpenProfile, notify, children }) {
   const [form, setForm] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [manageGenres, setManageGenres] = useState(false);
+  const [menu, setMenu] = useState(null);
+  const [recommending, setRecommending] = useState(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
 
   const album = open ? d.albumById[open.id] : null;
 
@@ -32,12 +37,30 @@ export function AlbumHost({ onOpenProfile, notify, children }) {
     return c;
   }, [d.albums]);
 
+  /* right-clicking a release: edit and delete for whoever added it (or an admin),
+     recommend for everyone */
+  const albumMenu = (e, a) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const items = [];
+    if (d.canEdit(a)) {
+      items.push({ icon: "✎", label: "Edit Release", onClick: () => setForm({ mode: "edit", album: a }) });
+      items.push({ icon: "🗑", label: "Delete Release", danger: true, onClick: () => askDelete(a) });
+    }
+    items.push({ icon: "➤", label: "Recommend To…", onClick: () => setRecommending(a.id) });
+    setMenu({ x: e.clientX, y: e.clientY, title: a.title, items });
+  };
+
   const actions = {
     openAlbum: (id, tab) => setOpen({ id, tab }),
     newAlbum: () => setForm({ mode: "create", album: blankAlbum() }),
     manageGenres: () => setManageGenres(true),
-    busy: !!(open || form || confirm || manageGenres),
+    recommend: (id) => setRecommending(id),
+    albumMenu,
+    busy: !!(open || form || confirm || manageGenres || recommending),
   };
+
+  const recAlbum = recommending ? d.albumById[recommending] : null;
 
   const rate = (fn) => album && d.patchMyReview(album.id, fn);
 
@@ -50,7 +73,7 @@ export function AlbumHost({ onOpenProfile, notify, children }) {
     notify(created ? `${typeLabel(a.type)} added — everyone can see it now.` : "Release updated.");
   };
 
-  const askDelete = () => {
+  const askDelete = (album) => {
     const others = (d.reviewsByAlbum[album.id] || []).filter((r) => r.user_id !== d.userId && hasVerdict(album, r)).length;
     setConfirm({
       title: "Delete Release",
@@ -96,7 +119,7 @@ export function AlbumHost({ onOpenProfile, notify, children }) {
             userId={d.userId}
             profileById={d.profileById}
             initialTab={open.tab || "mine"}
-            blocked={!!confirm}
+            blocked={!!confirm || !!recAlbum}
             onClose={() => setOpen(null)}
             onRateAlbum={(v) => rate((r) => ({ ...r, rating: v }))}
             onRateTrack={(trackId, v) =>
@@ -113,8 +136,10 @@ export function AlbumHost({ onOpenProfile, notify, children }) {
               })
             }
             onNotes={(notes) => rate((r) => ({ ...r, notes }))}
+            canEdit={d.canEdit(album)}
             onEdit={() => setForm({ mode: "edit", album })}
-            onDelete={askDelete}
+            onDelete={() => askDelete(album)}
+            onRecommend={() => setRecommending(album.id)}
             onClearReview={askClear}
             onOpenProfile={(id) => {
               setOpen(null);
@@ -169,6 +194,34 @@ export function AlbumHost({ onOpenProfile, notify, children }) {
           />
         )}
       </Popup>
+
+      <Popup show={!!recAlbum}>
+        {recAlbum && (
+          <RecommendDialog
+            t={t}
+            s={s}
+            album={recAlbum}
+            members={d.profiles.filter((p) => p.id !== d.userId).sort((x, y) => nameOf(x).localeCompare(nameOf(y)))}
+            sentTo={new Set(d.sent.filter((r) => r.album_id === recAlbum.id).map((r) => r.to_user))}
+            onCancel={() => setRecommending(null)}
+            onSend={async (ids, note) => {
+              try {
+                await d.recommend(recAlbum.id, ids, note);
+              } catch (e) {
+                throw new Error(d.friendly(e));
+              }
+              setRecommending(null);
+              notify(
+                ids.length === 1
+                  ? `Recommended to ${nameOf(d.profileById[ids[0]])}.`
+                  : `Recommended to ${ids.length} members.`
+              );
+            }}
+          />
+        )}
+      </Popup>
+
+      {menu && <ContextMenu t={t} x={menu.x} y={menu.y} title={menu.title} items={menu.items} onClose={closeMenu} />}
 
       <Popup show={!!confirm}>
         {confirm && (

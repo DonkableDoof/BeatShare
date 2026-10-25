@@ -17,6 +17,7 @@ import {
   timeAgo,
 } from "../music";
 import { Art, Avatar, Stars, Stat, GenreChip, useEscape } from "./bits.jsx";
+import LinkButton from "../components/LinkButton.jsx";
 
 export default function AlbumDetail({
   t,
@@ -34,8 +35,10 @@ export default function AlbumDetail({
   onRateTrack,
   onInterlude,
   onNotes,
+  canEdit,
   onEdit,
   onDelete,
+  onRecommend,
   onClearReview,
   onOpenProfile,
 }) {
@@ -49,7 +52,6 @@ export default function AlbumDetail({
     String(b.updated_at).localeCompare(String(a.updated_at))
   );
   const owner = profileById[album.created_by];
-  const mine = album.created_by === userId;
 
   useEscape(onClose, blocked);
 
@@ -102,6 +104,11 @@ export default function AlbumDetail({
               {album.artist || "Unknown artist"}
               {album.year ? ` · ${album.year}` : ""}
             </div>
+            {album.link && (
+              <div style={{ marginTop: 10 }}>
+                <LinkButton t={t} url={album.link} />
+              </div>
+            )}
             {genres.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
                 {genres.map((g) => (
@@ -179,7 +186,13 @@ export default function AlbumDetail({
 
               {tracks.length === 0 ? (
                 <div style={s.empty}>
-                  No tracks yet — use <strong>Edit Release</strong> to add the tracklist.
+                  {canEdit ? (
+                    <>
+                      No tracks yet — use <strong>Edit Release</strong> to add the tracklist.
+                    </>
+                  ) : (
+                    "No tracks yet — whoever added this release can add the tracklist."
+                  )}
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -192,7 +205,7 @@ export default function AlbumDetail({
                       rating={trackRating(myReview, tr.id)}
                       group={others.length ? groupTrackAvg(reviews, tr.id) : null}
                       onRate={(v) => onRateTrack(tr.id, v)}
-                      onInterlude={() => onInterlude(tr.id, !tr.interlude)}
+                      onInterlude={canEdit ? () => onInterlude(tr.id, !tr.interlude) : null}
                     />
                   ))}
                 </div>
@@ -246,7 +259,7 @@ export default function AlbumDetail({
             · {prettyDate(album.created_at)}
           </span>
           <div style={{ flex: 1 }} />
-          {mine && (
+          {canEdit && (
             <button style={{ ...s.btnGhost, color: "#ef4444", borderColor: hexToRgba("#ef4444", 0.5) }} onClick={onDelete}>
               Delete
             </button>
@@ -256,8 +269,13 @@ export default function AlbumDetail({
               Clear My Review
             </button>
           )}
-          <button style={s.btnGhost} onClick={onEdit}>
-            Edit Release
+          {canEdit && (
+            <button style={s.btnGhost} onClick={onEdit}>
+              Edit Release
+            </button>
+          )}
+          <button style={s.btnGhost} title="Send this to someone's inbox" onClick={onRecommend}>
+            ➤ Recommend
           </button>
           <button style={s.btnPrimary} onClick={onClose}>
             Done
@@ -291,23 +309,32 @@ function TrackRow({ t, i, tr, rating, group, onRate, onInterlude }) {
         style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: tr.interlude ? t.textMuted : t.text }}>
         {tr.title}
       </span>
-      <button
-        title={tr.interlude ? "Rate this track after all (changes it for everyone)" : "Mark as an interlude for everyone — no rating needed"}
-        onClick={onInterlude}
-        style={{
-          padding: "2px 8px",
-          borderRadius: 999,
-          fontSize: 10.5,
-          fontWeight: 700,
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-          border: `1px solid ${tr.interlude ? t.border : "transparent"}`,
-          background: tr.interlude ? t.bgCard2 : "transparent",
-          color: t.textDim,
-          opacity: tr.interlude ? 1 : 0.55,
-        }}>
-        {tr.interlude ? "♪ Interlude" : "♪"}
-      </button>
+      {/* only whoever can edit the release marks interludes; everyone else just sees them */}
+      {(onInterlude || tr.interlude) && (
+        <button
+          title={
+            !onInterlude
+              ? "Marked as an interlude — no rating needed"
+              : tr.interlude
+                ? "Rate this track after all (changes it for everyone)"
+                : "Mark as an interlude for everyone — no rating needed"
+          }
+          onClick={onInterlude || undefined}
+          style={{
+            padding: "2px 8px",
+            borderRadius: 999,
+            fontSize: 10.5,
+            fontWeight: 700,
+            cursor: onInterlude ? "pointer" : "default",
+            whiteSpace: "nowrap",
+            border: `1px solid ${tr.interlude ? t.border : "transparent"}`,
+            background: tr.interlude ? t.bgCard2 : "transparent",
+            color: t.textDim,
+            opacity: tr.interlude ? 1 : 0.55,
+          }}>
+          {tr.interlude ? "♪ Interlude" : "♪"}
+        </button>
+      )}
       {tr.interlude ? (
         <span style={{ width: (group !== null ? 56 : 0) + 26 + 12 + 17 * 5 + 8, fontSize: 11.5, color: t.textDim, textAlign: "right" }}>
           no rating needed

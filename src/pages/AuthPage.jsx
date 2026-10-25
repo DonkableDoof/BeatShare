@@ -9,7 +9,8 @@ const friendlyAuth = (msg) => {
   if (/invalid login/i.test(msg)) return "That email and password don't match an account.";
   if (/already registered/i.test(msg)) return "There's already an account with that email — sign in instead.";
   if (/email not confirmed/i.test(msg)) return "Confirm your email first — check your inbox for the link.";
-  if (/database error saving new user/i.test(msg)) return "That username was just taken — try another.";
+  if (/invalid invite code/i.test(msg)) return "That invite code isn't valid, or it's already been used.";
+  if (/database error saving new user/i.test(msg)) return "That invite code or username was just used by someone else — check both and try again.";
   if (/failed to fetch/i.test(msg)) return "Couldn't reach BeatShare's server — check your connection.";
   return msg;
 };
@@ -23,6 +24,8 @@ export default function AuthPage() {
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [nameFree, setNameFree] = useState(null);
+  const [invite, setInvite] = useState("");
+  const [inviteOk, setInviteOk] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -40,11 +43,22 @@ export default function AuthPage() {
     return () => clearTimeout(id);
   }, [uname, mode, validName]);
 
+  /* …and the invite code */
+  const code = invite.trim().toUpperCase();
+  useEffect(() => {
+    setInviteOk(null);
+    if (mode !== "signup" || code.length < 6) return;
+    const id = setTimeout(() => {
+      api.inviteAvailable(code).then(setInviteOk, () => setInviteOk(null));
+    }, 350);
+    return () => clearTimeout(id);
+  }, [code, mode]);
+
   const canSubmit =
     !busy &&
     /\S+@\S+\.\S+/.test(email.trim()) &&
     password.length >= 6 &&
-    (mode === "signin" || (validName && nameFree !== false));
+    (mode === "signin" || (validName && nameFree !== false && (code.length >= 6 || isDemo) && inviteOk !== false));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -56,12 +70,14 @@ export default function AuthPage() {
       if (mode === "signin") {
         await api.signIn({ email: email.trim(), password });
       } else {
+        if (!(await api.inviteAvailable(code))) throw new Error("invalid invite code");
         if (!(await api.usernameAvailable(uname))) throw new Error("That username is taken.");
         const user = await api.signUp({
           email: email.trim(),
           password,
           username: uname,
           displayName: displayName.trim() || uname,
+          inviteCode: code,
         });
         if (!user) {
           setInfo("Account created — check your email for a confirmation link, then sign in here.");
@@ -122,6 +138,28 @@ export default function AuthPage() {
 
           {mode === "signup" && (
             <>
+              {field(
+                "Invite Code",
+                <input
+                  style={{ ...s.input, fontFamily: "ui-monospace, Consolas, monospace", letterSpacing: 1, borderColor: inviteOk === false ? "#ef4444" : t.border }}
+                  maxLength={32}
+                  placeholder="XXXXX-XXXXX"
+                  autoFocus
+                  value={invite}
+                  onChange={(e) => setInvite(e.target.value.toUpperCase().replace(/\s/g, ""))}
+                />,
+                <div style={{ fontSize: 11.5, marginTop: 5, color: inviteOk === false ? "#ef4444" : inviteOk ? t.green : t.textDim }}>
+                  {inviteOk === false
+                    ? "That code isn't valid, or it's already been used."
+                    : inviteOk
+                      ? "✓ Code accepted"
+                      : code.length >= 6
+                        ? "Checking…"
+                        : isDemo
+                          ? "Demo mode: the first account on this computer doesn't need one."
+                          : "BeatShare is invite-only. Ask the group's admin for a code."}
+                </div>
+              )}
               {field(
                 "Display Name",
                 <input style={s.input} maxLength={40} placeholder="Alex" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />

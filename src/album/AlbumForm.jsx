@@ -4,8 +4,8 @@ import { RELEASE_TYPES, typeLabel, stripTrackNo, splitTracks, similarReleases, s
 import { readFile, shrinkImage } from "../images";
 import { GenrePicker } from "./Genres.jsx";
 import { Art, oneLine, useEscape } from "./bits.jsx";
-
-const MAX_COVER = 640;
+import Select from "../components/Select.jsx";
+import { cleanLink, linkHost } from "../links";
 
 export const blankAlbum = () => ({
   id: crypto.randomUUID(),
@@ -15,6 +15,7 @@ export const blankAlbum = () => ({
   genres: [],
   year: "",
   cover_url: "",
+  link: "",
   tracks: [],
 });
 
@@ -25,6 +26,7 @@ export default function AlbumForm({ t, s, mode, initial, albums, profileById, ge
   const [picked, setPicked] = useState(initial.genres || []);
   const [year, setYear] = useState(initial.year || "");
   const [cover, setCover] = useState(initial.cover_url || "");
+  const [link, setLink] = useState(initial.link || "");
   const [tracks, setTracks] = useState(initial.tracks || []);
   const [newTrack, setNewTrack] = useState("");
   const [dropping, setDropping] = useState(false);
@@ -40,7 +42,7 @@ export default function AlbumForm({ t, s, mode, initial, albums, profileById, ge
     if (!file || !file.type.startsWith("image/")) return;
     setBusy(true);
     try {
-      setCover(await shrinkImage(await readFile(file), MAX_COVER));
+      setCover(await shrinkImage(await readFile(file)));
     } finally {
       setBusy(false);
     }
@@ -83,7 +85,9 @@ export default function AlbumForm({ t, s, mode, initial, albums, profileById, ge
 
   const similar = similarReleases(albums, title, artist, initial.id);
   const exact = similar.find((a) => sameRelease(a, { title, artist }));
-  const canSave = title.trim().length > 0 && !exact && !saving;
+  const url = cleanLink(link);
+  const badLink = link.trim() !== "" && !url;
+  const canSave = title.trim().length > 0 && !exact && !badLink && !saving;
 
   const submit = async () => {
     if (!canSave) return;
@@ -98,6 +102,7 @@ export default function AlbumForm({ t, s, mode, initial, albums, profileById, ge
         genres: picked,
         year: String(year).trim(),
         cover_url: cover,
+        link: url,
         tracks: tracks.map((tr) => ({ ...tr, title: tr.title.trim() })).filter((tr) => tr.title),
       });
     } catch (e) {
@@ -197,13 +202,7 @@ export default function AlbumForm({ t, s, mode, initial, albums, profileById, ge
               </div>
               <div style={{ width: 130 }}>
                 <div style={s.label}>Type</div>
-                <select style={{ ...s.input, cursor: "pointer" }} value={type} onChange={(e) => setType(e.target.value)}>
-                  {RELEASE_TYPES.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
+                <Select t={t} s={s} value={type} options={RELEASE_TYPES} onChange={setType} />
               </div>
             </div>
             <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
@@ -229,6 +228,22 @@ export default function AlbumForm({ t, s, mode, initial, albums, profileById, ge
                   onKeyDown={(e) => e.key === "Enter" && submit()}
                 />
               </div>
+            </div>
+
+            <div style={{ marginBottom: 10 }}>
+              <div style={s.label}>Link</div>
+              <input
+                style={{ ...s.input, borderColor: badLink ? "#ef4444" : t.border }}
+                placeholder="Spotify, Apple Music, Bandcamp, YouTube… (optional)"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+              />
+              {link.trim() !== "" && (
+                <div style={{ fontSize: 11.5, marginTop: 5, color: badLink ? "#ef4444" : t.textDim }}>
+                  {badLink ? "That doesn't look like a web link." : `Opens ${linkHost(url)}`}
+                </div>
+              )}
             </div>
 
             {similar.length > 0 && (

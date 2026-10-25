@@ -1,5 +1,8 @@
-/* Images are scaled down and re-encoded as JPEG before upload, so a
-   full-size scan doesn't cost everyone a slow download. */
+/* Images are scaled down to fit 256×256 and re-encoded as JPEG before
+   upload, so a full-size scan doesn't cost everyone a slow download.
+   Anything already that small is uploaded as it is. */
+
+export const MAX_IMAGE = 256;
 
 export const readFile = (file) =>
   new Promise((res, rej) => {
@@ -19,9 +22,11 @@ const loadImage = (src) =>
   });
 
 /* square-crops when `square` is set — avatars are always shown as circles */
-export async function shrinkImage(src, max = 640, square = false) {
+export async function shrinkImage(src, max = MAX_IMAGE, square = false) {
   try {
     const img = await loadImage(src);
+    const fits = img.width <= max && img.height <= max && (!square || img.width === img.height);
+    if (fits) return src;
     const side = Math.min(img.width, img.height);
     const sw = square ? side : img.width;
     const sh = square ? side : img.height;

@@ -6,7 +6,7 @@
 const DB_KEY = "bs-demo-db";
 const SESSION_KEY = "bs-demo-session";
 
-const blank = () => ({ users: [], profiles: [], genres: [], albums: [], reviews: [] });
+const blank = () => ({ users: [], profiles: [], genres: [], albums: [], reviews: [], invites: [], recommendations: [] });
 
 function read() {
   try {
@@ -27,6 +27,14 @@ function write(db) {
 const now = () => new Date().toISOString();
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const norm = (s) => String(s || "").trim().toLowerCase();
+const normCode = (s) => String(s || "").trim().toUpperCase();
+
+/* same shape as the database's codes: "K7QM2-XH9TD" */
+const newCode = () => {
+  const abc = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const c = [...crypto.getRandomValues(new Uint8Array(10))].map((b) => abc[b % 32]).join("");
+  return `${c.slice(0, 5)}-${c.slice(5)}`;
+};
 
 const blobToDataUrl = (blob) =>
   new Promise((res, rej) => {
@@ -55,6 +63,9 @@ export function createDemoApi() {
     return current.id;
   };
 
+  /* same rule as the database: whoever added a release, or an admin */
+  const canEdit = (db, album) => album.created_by === me() || !!(db.profiles.find((p) => p.id === me()) || {}).is_admin;
+
   const releaseTaken = (db, row, exceptId) =>
     db.albums.some((a) => a.id !== exceptId && norm(a.artist) === norm(row.artist) && norm(a.title) === norm(row.title));
 
@@ -74,18 +85,28 @@ export function createDemoApi() {
       return !read().profiles.some((p) => p.username === norm(name));
     },
 
-    async signUp({ email, password, username, displayName }) {
+    /* the first demo account gets in without a code */
+    async inviteAvailable(code) {
+      const db = read();
+      return !db.users.length || db.invites.some((i) => i.code === normCode(code) && !i.used_by);
+    },
+
+    async signUp({ email, password, username, displayName, inviteCode }) {
       const db = read();
       if (db.users.some((u) => u.email === norm(email))) throw new Error("User already registered");
       if (db.profiles.some((p) => p.username === norm(username))) throw new Error("That username is taken.");
+      const first = !db.users.length;
+      const invite = db.invites.find((i) => i.code === normCode(inviteCode) && !i.used_by);
+      if (!first && !invite) throw new Error("invalid invite code");
       const id = crypto.randomUUID();
+      if (invite) Object.assign(invite, { used_by: id, used_at: now() });
       db.users.push({ id, email: norm(email), password });
       db.profiles.push({
         id,
         username: norm(username),
         display_name: (displayName || "").trim() || username,
         avatar_url: "",
-        bio: "",
+        is_admin: first,
         created_at: now(),
       });
       write(db);
@@ -107,8 +128,9 @@ export function createDemoApi() {
     },
 
     async loadAll() {
-      const { profiles, genres, albums, reviews } = read();
-      return clone({ profiles, genres, albums, reviews });
+      const { profiles, genres, albums, reviews, recommendations } = read();
+      const mine = recommendations.filter((r) => r.to_user === me() || r.from_user === me());
+      return clone({ profiles, genres, albums, reviews, recommendations: mine });
     },
 
     /* another window of the app changing the demo data reloads this one */
@@ -116,6 +138,23 @@ export function createDemoApi() {
       const onStorage = (e) => e.key === DB_KEY && onChange("*", "RELOAD");
       window.addEventListener("storage", onStorage);
       return () => window.removeEventListener("storage", onStorage);
+    },
+
+    async listInvites() {
+      return clone(read().invites).sort((x, y) => y.created_at.localeCompare(x.created_at));
+    },
+    async createInvite(userId) {
+      const db = read();
+      if (!(db.profiles.find((p) => p.id === me()) || {}).is_admin) throw new Error("Only admins can create invite codes.");
+      const rec = { code: newCode(), makes_admin: false, created_by: userId, created_at: now(), used_by: null, used_at: null };
+      db.invites.push(rec);
+      write(db);
+      return clone(rec);
+    },
+    async deleteInvite(code) {
+      const db = read();
+      db.invites = db.invites.filter((i) => i.code !== code || i.used_by);
+      write(db);
     },
 
     async updateProfile(id, patch) {
@@ -144,6 +183,7 @@ export function createDemoApi() {
       const db = read();
       const old = db.albums.find((a) => a.id === id);
       if (!old) throw new Error("That release no longer exists.");
+      if (!canEdit(db, old)) throw new Error("Only the member who added a release can edit it.");
       if (releaseTaken(db, { ...old, ...patch }, id))
         throw new Error('duplicate key value violates unique constraint "albums_release_key"');
       const rec = { ...old, ...patch, created_by: old.created_by, created_at: old.created_at, updated_at: now() };
@@ -154,9 +194,10 @@ export function createDemoApi() {
     async deleteAlbum(id) {
       const db = read();
       const a = db.albums.find((x) => x.id === id);
-      if (a && a.created_by !== me()) throw new Error("Only the member who added a release can delete it.");
+      if (a && !canEdit(db, a)) throw new Error("Only the member who added a release can delete it.");
       db.albums = db.albums.filter((x) => x.id !== id);
       db.reviews = db.reviews.filter((r) => r.album_id !== id);
+      db.recommendations = db.recommendations.filter((r) => r.album_id !== id);
       write(db);
     },
 
@@ -190,6 +231,31 @@ export function createDemoApi() {
       write(db);
       return clone(rec);
     },
+    async insertRecommendations(rows) {
+      const db = read();
+      const recs = rows.map((row) => {
+        if (row.from_user !== me() || row.to_user === me()) throw new Error("You can't recommend that.");
+        if (db.recommendations.some((r) => r.album_id === row.album_id && r.from_user === row.from_user && r.to_user === row.to_user))
+          throw new Error('duplicate key value violates unique constraint "recommendations_album_id_from_user_to_user_key"');
+        return { id: crypto.randomUUID(), note: "", ...row, created_at: now(), read_at: null };
+      });
+      db.recommendations.push(...recs);
+      write(db);
+      return clone(recs);
+    },
+    async markRecommendationsRead(ids) {
+      const db = read();
+      const at = now();
+      db.recommendations = db.recommendations.map((r) => (ids.includes(r.id) && r.to_user === me() ? { ...r, read_at: at } : r));
+      write(db);
+      return clone(db.recommendations.filter((r) => ids.includes(r.id)));
+    },
+    async deleteRecommendation(id) {
+      const db = read();
+      db.recommendations = db.recommendations.filter((r) => r.id !== id || (r.to_user !== me() && r.from_user !== me()));
+      write(db);
+    },
+
     async deleteReview(albumId, userId) {
       if (userId !== me()) throw new Error("You can only edit your own reviews.");
       const db = read();

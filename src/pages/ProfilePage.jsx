@@ -75,24 +75,32 @@ export default function ProfilePage({ userId, onBack, notify }) {
           <div style={{ fontSize: 13, color: t.textMuted, marginTop: 2 }}>
             @{p.username} · joined {prettyDate(p.created_at)}
           </div>
-          {p.bio ? (
-            <p className="lo-selectable" style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 10, whiteSpace: "pre-wrap", maxWidth: 560 }}>
-              {p.bio}
-            </p>
-          ) : (
-            isMe && <p style={{ fontSize: 13, color: t.textDim, marginTop: 10 }}>Add a bio so your friends know what you're into.</p>
-          )}
           <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
             <Stat t={t} label="Rated" value={st.scored.length} />
             <Stat t={t} label="Average" value={st.avg ? points(st.avg) : "—"} color={st.avg ? scoreColor(st.avg) : null} />
             <Stat t={t} label="Added" value={st.added.length} />
             {match && <Stat t={t} label={`Taste Match · ${match.shared} shared`} value={`${match.pct}%`} color={t.accent} />}
-            {st.topGenre && (
-              <span style={{ marginLeft: 4, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: t.textMuted }}>
-                Most rated genre <GenreChip t={t} genre={st.topGenre} small />
-              </span>
-            )}
           </div>
+        </div>
+        <div style={{ minWidth: 200 }}>
+          <div style={{ ...s.label, marginBottom: 8 }}>Top Genres</div>
+          {st.topGenres.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {st.topGenres.map(({ genre, count }, i) => (
+                <div key={genre.id} style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                  <span style={{ width: 14, fontSize: 13, fontWeight: 700, color: t.textDim, textAlign: "right" }}>{i + 1}</span>
+                  <GenreChip t={t} genre={genre} />
+                  <span style={{ fontSize: 12, color: t.textMuted }}>
+                    {count} release{count === 1 ? "" : "s"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12.5, color: t.textDim, lineHeight: 1.5, maxWidth: 200 }}>
+              {isMe ? "Score some releases with genres and your top 3 show up here." : "Nothing scored with a genre yet."}
+            </div>
+          )}
         </div>
         {isMe && (
           <button style={{ ...s.btnGhost, alignSelf: "flex-start" }} onClick={() => setEditing(true)}>
@@ -145,6 +153,7 @@ export default function ProfilePage({ userId, onBack, notify }) {
                 myReview={mine}
                 myScore={isMe ? 0 : reviewScore(a, mine)}
                 onOpen={() => host.openAlbum(a.id, isMe ? "mine" : "everyone")}
+                onContextMenu={(e) => host.albumMenu(e, a)}
               />
             );
           })}
@@ -176,7 +185,6 @@ function ProfileEditor({ t, s, profile, onCancel, onSave }) {
   const [avatar, setAvatar] = useState(profile.avatar_url || "");
   const [displayName, setDisplayName] = useState(profile.display_name || "");
   const [username, setUsername] = useState(profile.username || "");
-  const [bio, setBio] = useState(profile.bio || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [dropping, setDropping] = useState(false);
@@ -186,7 +194,7 @@ function ProfileEditor({ t, s, profile, onCancel, onSave }) {
 
   const takeFile = async (file) => {
     if (!file || !file.type.startsWith("image/")) return;
-    setAvatar(await shrinkImage(await readFile(file), 400, true));
+    setAvatar(await shrinkImage(await readFile(file), undefined, true));
   };
 
   useEffect(() => {
@@ -210,7 +218,7 @@ function ProfileEditor({ t, s, profile, onCancel, onSave }) {
     setError("");
     try {
       if (uname !== profile.username && !(await api.usernameAvailable(uname))) throw new Error("That username is taken.");
-      const patch = { display_name: displayName.trim().slice(0, 40), username: uname, bio: bio.trim().slice(0, 300) };
+      const patch = { display_name: displayName.trim().slice(0, 40), username: uname };
       if (avatar !== profile.avatar_url) patch.avatar_url = avatar;
       await onSave(patch);
     } catch (e) {
@@ -285,15 +293,6 @@ function ProfileEditor({ t, s, profile, onCancel, onSave }) {
             3–20 characters: lowercase letters, numbers and underscores.
           </div>
         )}
-        <div style={s.label}>Bio</div>
-        <textarea
-          style={{ ...s.input, minHeight: 80, resize: "vertical", lineHeight: 1.6 }}
-          maxLength={300}
-          placeholder="What you listen to, what you're looking for…"
-          value={bio}
-          onChange={(e) => setBio(e.target.value)}
-        />
-        <div style={{ fontSize: 11, color: t.textDim, textAlign: "right", marginTop: 4 }}>{bio.length}/300</div>
 
         {error && (
           <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 9, fontSize: 12.5, color: "#ef4444", background: hexToRgba("#ef4444", 0.1), border: `1px solid ${hexToRgba("#ef4444", 0.35)}` }}>
